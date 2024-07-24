@@ -2,6 +2,7 @@
 use std::{
     cmp::Ordering,
     collections::{btree_map, BTreeMap, BTreeSet, VecDeque},
+    fmt::Debug,
     marker::PhantomData,
     ops::{Add, AddAssign, Deref, DerefMut},
     slice,
@@ -163,8 +164,24 @@ impl<T, E> Graph<T, E> {
             path.push(prev);
             prev = predecessors[prev]?;
         }
+        path.push(prev);
         path.reverse();
         Some(Path { graph: self, path })
+    }
+
+    #[must_use]
+    /// Create a graph with no nodes
+    pub const fn new() -> Self {
+        Self { nodes: Vec::new() }
+    }
+
+    pub fn insert(&mut self, value: T) -> Node<'_, T, E> {
+        let idx = self.nodes.len();
+        self.nodes.push(Adjacency {
+            value,
+            edges: BTreeMap::new(),
+        });
+        Node { graph: self, idx }
     }
 }
 
@@ -415,6 +432,16 @@ impl<'a, T, E: Default + Clone + AddAssign<E>> Path<'a, T, E> {
             len += self.graph.nodes[self.path[i]].edges[&self.path[i + 1]].clone();
         }
         len
+    }
+}
+
+impl<'a, T: Debug, E> Debug for Path<'a, T, E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut ls = f.debug_list();
+        for value in self {
+            ls.entry(&*value);
+        }
+        ls.finish()
     }
 }
 
