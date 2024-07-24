@@ -14,10 +14,27 @@ pub struct Graph<T, E = ()> {
 
 impl<T, E> Graph<T, E> {
     /// Connect two nodes with a weight
+    ///
+    /// # Panics
+    ///
+    /// Panics if either the start or end node refers outside of the pool kept by the graph.
     pub fn connect_weighted(&mut self, start: WeakNode<T, E>, end: WeakNode<T, E>, weight: E) {
+        assert!(
+            start.0 < self.nodes.len(),
+            "Attempt to create connection with a node that is not part of this graph."
+        );
+        assert!(
+            end.0 < self.nodes.len(),
+            "Attempt to create connection with a node that is not part of this graph."
+        );
         self.nodes[start.0].edges.insert(end.0, weight);
     }
 
+    /// Connect two nodes with a weight, using a bidirectional connection
+    ///
+    /// # Panics
+    ///
+    /// Panics if either the start or end node refers outside of the pool kept by the graph.
     pub fn connect_undirected_weighted(
         &mut self,
         start: WeakNode<T, E>,
@@ -38,6 +55,7 @@ impl<T, E> Graph<T, E> {
         }
     }
 
+    /// Find one node in the graph whose content equals the provided value.
     pub fn find(&self, item: &T) -> Option<Node<'_, T, E>>
     where
         T: PartialEq,
@@ -48,11 +66,14 @@ impl<T, E> Graph<T, E> {
         })
     }
 
-    /// .
+    /// Convert a weak reference to a strong reference. See `WeakNode` and `Node` for more information.
+    ///
+    /// This will cause unexpected behavior if the provided `WeakNode` is not from this graph
+    /// or if the graph has changed since the `WeakNode` reference was created.
     ///
     /// # Panics
     ///
-    /// Panics if .
+    /// Panics if the node would return a reference outside of the pool kept by the graph.
     #[must_use]
     pub fn weak_ref(&self, node: WeakNode<T, E>) -> Node<'_, T, E> {
         assert!(
@@ -65,11 +86,14 @@ impl<T, E> Graph<T, E> {
         }
     }
 
-    /// .
+    /// Convert a weak reference to a strong mutable reference. See `WeakNode` and `NodeMut` for more information.
+    ///
+    /// This will cause unexpected behavior if the provided `WeakNode` is not from this graph
+    /// or if the graph has changed since the `WeakNode` reference was created.
     ///
     /// # Panics
     ///
-    /// Panics if .
+    /// Panics if the node would return a reference outside of the pool kept by the graph.
     #[must_use]
     pub fn weak_mut(&mut self, node: WeakNode<T, E>) -> NodeMut<'_, T, E> {
         assert!(
@@ -82,11 +106,12 @@ impl<T, E> Graph<T, E> {
         }
     }
 
-    /// .
+    /// Returns the shortest path between two nodes, if a path exists and the edges can be manipulated and
+    /// compared appropriately.
     ///
     /// # Panics
     ///
-    /// Panics if .
+    /// Panics if either the start or end node is not part of this graph.
     #[must_use]
     pub fn dijkstras(&self, start: Node<'_, T, E>, end: Node<'_, T, E>) -> Option<Path<'_, T, E>>
     where
@@ -105,7 +130,7 @@ impl<T, E> Graph<T, E> {
         distance[start.idx] = Some(E::default());
         let mut predecessors: Vec<_> = vec![None; self.nodes.len()];
 
-        while let Some((next_rem, &next)) =
+        'outer: while let Some((next_rem, &next)) =
             remaining.iter().enumerate().min_by(|(_, &a), (_, &b)| {
                 match (&distance[a], &distance[b]) {
                     (Some(_), None) => Ordering::Less,
@@ -117,6 +142,9 @@ impl<T, E> Graph<T, E> {
         {
             remaining.remove(next_rem);
             for (step, weight) in &self.nodes[next].edges {
+                if next == end.idx {
+                    break 'outer;
+                }
                 let new_weight = distance[next].clone()? + weight.clone();
                 // if the old distance is less than the old one, do nothing.
                 if distance[*step]
@@ -147,18 +175,27 @@ struct Adjacency<T, E = ()> {
 }
 
 impl<T> Graph<T> {
-    /// .
+    /// Create a directed connection between the two input vertices
+    ///
+    /// # Panics
+    ///
+    /// Panics if either the start or end node refers outside of the pool kept by the graph.
     pub fn connect(&mut self, start: WeakNode<T>, end: WeakNode<T>) {
         self.connect_weighted(start, end, ());
     }
 
-    /// .
+    /// Create an undirected connection between the two input vertices
+    ///
+    /// # Panics
+    ///
+    /// Panics if either the start or end node refers outside of the pool kept by the graph.
     pub fn connect_undirected(&mut self, start: WeakNode<T>, end: WeakNode<T>) {
         self.connect_weighted(start, end, ());
         self.connect_weighted(end, start, ());
     }
 }
 
+/// A reference to a single node within a graph
 pub struct Node<'a, T, E = ()> {
     graph: &'a Graph<T, E>,
     idx: usize,
@@ -173,7 +210,7 @@ impl<'a, T, E> Clone for Node<'a, T, E> {
 impl<'a, T, E> Copy for Node<'a, T, E> {}
 
 impl<'a, T, E> Node<'a, T, E> {
-    /// Returns the neighbors of this [`Node<T, E>`].
+    /// Returns the neighbors of this `Node`.
     #[must_use]
     pub fn neighbors(&self) -> Neighbors<'a, T, E> {
         Neighbors {
@@ -182,7 +219,7 @@ impl<'a, T, E> Node<'a, T, E> {
         }
     }
 
-    /// Returns the breadth-first iterator starting from this [`Node<T, E>`].
+    /// Returns the breadth-first iterator through the graph; starting from this `Node`.
     #[must_use]
     pub fn breadth_first(&self) -> BreadthFirst<'a, T, E> {
         BreadthFirst {
@@ -191,7 +228,7 @@ impl<'a, T, E> Node<'a, T, E> {
         }
     }
 
-    /// Returns the dept-first iterator starting from this [`Node<T, E>`].
+    /// Returns the dept-first iterator through the graph; starting from this `Node`.
     #[must_use]
     pub fn depth_first(&self) -> DepthFirst<'a, T, E> {
         DepthFirst {
@@ -201,7 +238,7 @@ impl<'a, T, E> Node<'a, T, E> {
         }
     }
 
-    /// Clones the inner value of this [`Node<T, E>`].
+    /// Clones the inner value of this `Node`.
     #[must_use]
     pub fn clone_inner(&self) -> T
     where
@@ -210,7 +247,7 @@ impl<'a, T, E> Node<'a, T, E> {
         self.graph.nodes[self.idx].value.clone()
     }
 
-    /// Returns the weak reference of this [`Node<T, E>`].
+    /// Returns the weak reference of this `Node`.
     #[must_use]
     pub const fn weak(&self) -> WeakNode<T, E> {
         WeakNode(self.idx, PhantomData)
@@ -271,7 +308,7 @@ impl<'a, T, E> NodeMut<'a, T, E> {
         }
     }
 
-    /// Returns the weak reference of this `NodeMut`.
+    /// Converts this `NodeMut` to a weak reference, allowing the corresponding `Graph` to be used elsewhere.
     #[must_use]
     pub const fn weak(&self) -> WeakNode<T, E> {
         WeakNode(self.idx, PhantomData)
@@ -292,6 +329,7 @@ impl<'a, T, E> DerefMut for NodeMut<'a, T, E> {
     }
 }
 
+/// An iterator over a `Graph`, returning `Node`s in depth-first order
 pub struct DepthFirst<'a, T, E> {
     graph: &'a Graph<T, E>,
     stack: Vec<usize>,
@@ -317,7 +355,7 @@ impl<'a, T, E> Iterator for DepthFirst<'a, T, E> {
     }
 }
 
-/// A Breadth-First iterator over `Node`s in this graph
+/// An iterator over a `Graph`, returning `Node`s in breadth-first order
 pub struct BreadthFirst<'a, T, E> {
     queue: VecDeque<Node<'a, T, E>>,
     visited: BTreeSet<usize>,
@@ -338,12 +376,14 @@ impl<'a, T, E> Iterator for BreadthFirst<'a, T, E> {
     }
 }
 
+/// A path through a `Graph`
 pub struct Path<'a, T, E> {
     graph: &'a Graph<T, E>,
     path: Vec<usize>,
 }
 
 impl<'a, T, E> Path<'a, T, E> {
+    /// Returns an iterator over the `Node`s that make up this `Path`
     #[must_use]
     pub fn iter(&'a self) -> PathIterator<'a, T, E> {
         PathIterator {
@@ -352,13 +392,23 @@ impl<'a, T, E> Path<'a, T, E> {
         }
     }
 
+    /// Add the provided `WeakNode` to the end of this `Path`
+    ///
+    /// # Panics
+    ///
+    /// Panics if the provided `WeakNode` would index outside of the pool used by the `Graph`
     pub fn push(&mut self, node: WeakNode<T, E>) {
+        assert!(
+            node.0 < self.graph.nodes.len(),
+            "Attempt to access Node outside of the Graph"
+        );
         self.path.push(node.0);
     }
 }
 
 impl<'a, T, E: Default + Clone + AddAssign<E>> Path<'a, T, E> {
     #[must_use]
+    /// Calculate the length of the path
     pub fn len(&self) -> E {
         let mut len = E::default();
         for i in 0..(self.path.len() - 1) {
@@ -376,6 +426,7 @@ impl<'a, T, E> IntoIterator for &'a Path<'a, T, E> {
     }
 }
 
+/// An iterator over `Node`s in a `Path`
 pub struct PathIterator<'a, T, E> {
     graph: &'a Graph<T, E>,
     iter: slice::Iter<'a, usize>,
